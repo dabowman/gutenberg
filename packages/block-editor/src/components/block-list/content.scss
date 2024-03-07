@@ -360,16 +360,19 @@ _::-webkit-full-page-media, _:future, :root .has-multi-selection .block-editor-b
 	z-index: z-index("{core/image aligned left or right} .wp-block");
 }
 
-// This could very well break themes. I wonder if we should just set body
-// element height, and let themes decide if they want to push the footer to the
-// bottom.
-.is-root-container.wp-site-blocks {
+body.is-zoomed-out {
 	display: flex;
 	flex-direction: column;
-	height: 100%;
 
-	main {
+	> .is-root-container {
 		flex: 1;
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+
+		> main {
+			flex: 1;
+		}
 	}
 }
 

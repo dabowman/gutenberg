@@ -229,6 +229,23 @@ function Iframe( {
 		};
 	}, [] );
 
+	const windowResizeRef = useRefEffect( ( node ) => {
+		const onResize = () => {
+			setIframeWindowInnerHeight(
+				node.ownerDocument.defaultView.innerHeight
+			);
+		};
+		node.ownerDocument.defaultView.addEventListener( 'resize', onResize );
+		return () => {
+			node.ownerDocument.defaultView.removeEventListener(
+				'resize',
+				onResize
+			);
+		};
+	}, [] );
+
+	const [ iframeWindowInnerHeight, setIframeWindowInnerHeight ] = useState();
+
 	const disabledRef = useDisabled( { isDisabled: ! readonly } );
 	const bodyRef = useMergeRefs( [
 		useBubbleEvents( iframeDocument ),
@@ -236,6 +253,7 @@ function Iframe( {
 		clearerRef,
 		writingFlowRef,
 		disabledRef,
+		windowResizeRef,
 	] );
 
 	// Correct doctype is required to enable rendering in standards
@@ -283,28 +301,33 @@ function Iframe( {
 
 	useEffect( () => {
 		if ( iframeDocument && scale !== 1 ) {
+			iframeDocument.body.classList.add( 'is-zoomed-out' );
 			iframeDocument.documentElement.style.transform = `scale( ${ scale } )`;
 			iframeDocument.documentElement.style.marginTop = `${ frameSize }px`;
 			iframeDocument.documentElement.style.marginBottom = `${
 				-marginFromScaling * 2 + frameSize
 			}px`;
-			if (
-				iframeDocument.defaultView.innerHeight >
-				contentHeight * scale
-			) {
-				iframeDocument.body.style.height = `${ Math.floor(
-					( iframeDocument.defaultView.innerHeight - 2 * frameSize ) /
-						scale
+			if ( iframeWindowInnerHeight > contentHeight * scale ) {
+				iframeDocument.body.style.minHeight = `${ Math.floor(
+					( iframeWindowInnerHeight - 2 * frameSize ) / scale
 				) }px`;
 			}
 			return () => {
+				iframeDocument.body.classList.remove( 'is-zoomed-out' );
 				iframeDocument.documentElement.style.transform = '';
 				iframeDocument.documentElement.style.marginTop = '';
 				iframeDocument.documentElement.style.marginBottom = '';
-				iframeDocument.body.style.height = '';
+				iframeDocument.body.style.minHeight = '';
 			};
 		}
-	}, [ scale, frameSize, marginFromScaling, iframeDocument, contentHeight ] );
+	}, [
+		scale,
+		frameSize,
+		marginFromScaling,
+		iframeDocument,
+		contentHeight,
+		iframeWindowInnerHeight,
+	] );
 
 	// Make sure to not render the before and after focusable div elements in view
 	// mode. They're only needed to capture focus in edit mode.
