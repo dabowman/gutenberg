@@ -749,3 +749,13 @@
 		}
 	}
 }
+
+.dataviews-bulk-actions-popover .components-popover__content {
+	min-width: max-content;
+}
+
+.dataviews-bulk-actions-toolbar-wrapper {
+	display: flex;
+	flex-grow: 1;
+	width: 100%;
+}

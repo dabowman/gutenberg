@@ -13,6 +13,7 @@ import Filters from './filters';
 import Search from './search';
 import { VIEW_LAYOUTS, LAYOUT_TABLE, LAYOUT_GRID } from './constants';
 import BulkActions from './bulk-actions';
+import BulkActionsPopover from './bulk-actions-popover';
 
 const defaultGetItemId = ( item ) => item.id;
 const defaultOnSelectionChange = () => {};
@@ -145,11 +146,20 @@ export default function DataViews( {
 				deferredRendering={ deferredRendering }
 				setOpenedFilter={ setOpenedFilter }
 			/>
-			<Pagination
-				view={ view }
-				onChangeView={ onChangeView }
-				paginationInfo={ paginationInfo }
-			/>
+			<div>
+				<Pagination
+					view={ view }
+					onChangeView={ onChangeView }
+					paginationInfo={ paginationInfo }
+				/>
+				<BulkActionsPopover
+					data={ data }
+					actions={ actions }
+					selection={ selection }
+					setSelection={ setSelection }
+					getItemId={ getItemId }
+				/>
+			</div>
 		</div>
 	);
 }
