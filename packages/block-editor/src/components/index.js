@@ -67,13 +67,18 @@ export {
 	JustifyToolbar,
 	JustifyContentControl,
 } from './justify-content-control';
+export { default as __experimentalLinkControl } from './link-control';
 export {
-	default as LinkControl,
-	DeprecatedExperimentalLinkControl as __experimentalLinkControl,
-} from './link-control';
-export { __experimentalLinkControlSearchInput } from './link-control/search-input';
-export { __experimentalLinkControlSearchResults } from './link-control/search-results';
-export { __experimentalLinkControlSearchItem } from './link-control/search-item';
+	LinkPopoverContext as __experimentalLinkPopoverContext,
+	useLinkPopoverContext as __experimentalUseLinkPopoverContext,
+} from './link-control/context';
+export {
+	LinkPopoverFill as __experimentalLinkPopoverFill,
+	LinkPopoverSlot as __experimentalLinkPopoverSlot,
+} from './link-control/slot-fill';
+export { default as __experimentalLinkControlSearchInput } from './link-control/search-input';
+export { default as __experimentalLinkControlSearchResults } from './link-control/search-results';
+export { default as __experimentalLinkControlSearchItem } from './link-control/search-item';
 export { default as LineHeightControl } from './line-height-control';
 export { default as __experimentalListView } from './list-view';
 export { default as MediaReplaceFlow } from './media-replace-flow';

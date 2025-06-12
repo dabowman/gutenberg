@@ -22,6 +22,7 @@ import { isShallowEqualObjects } from '@wordpress/is-shallow-equal';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { store as preferencesStore } from '@wordpress/preferences';
 import { keyboardReturn } from '@wordpress/icons';
+import { useSlot } from '@wordpress/compose';
 
 /**
  * Internal dependencies
@@ -35,6 +36,7 @@ import useInternalValue from './use-internal-value';
 import { ViewerFill } from './viewer-slot';
 import { DEFAULT_LINK_SETTINGS } from './constants';
 import deprecated from '@wordpress/deprecated';
+import { LinkPopoverSlot } from './slot-fill';
 
 /**
  * Default properties associated with a link control value.
@@ -87,6 +89,15 @@ import deprecated from '@wordpress/deprecated';
  */
 
 /** @typedef {(title:string)=>WPLinkControlSuggestion} WPLinkControlCreateSuggestionProp */
+
+/**
+ * @typedef LinkPopoverContextValue
+ *
+ * @property {import('@wordpress/rich-text').Value} value         The rich text value of the entire block.
+ * @property {WPLinkControlValue}                   attributes    The current attributes of the link format.
+ * @property {(newAttributes: Object) => void}      setAttributes A function to update the link's attributes.
+ * @property {Object}                               range         A Popover anchor object. @see @wordpress/components/popover.
+ */
 
 /**
  * @typedef WPLinkControlProps
@@ -148,6 +159,10 @@ function LinkControl( {
 	}
 
 	const [ settingsOpen, setSettingsOpen ] = useState( false );
+	const [ advancedOptionsOpen, setAdvancedOptionsOpen ] = useState( false );
+
+	const { fills } = useSlot( 'LinkPopover' );
+	const hasFills = !! fills?.length;
 
 	const { advancedSettingsPreference } = useSelect( ( select ) => {
 		const prefsStore = select( preferencesStore );
@@ -466,6 +481,18 @@ function LinkControl( {
 							/>
 						</LinkControlSettingsDrawer>
 					) }
+				</div>
+			) }
+
+			{ hasFills && isEditingLink && hasLinkValue && (
+				<div className="block-editor-link-control__advanced-options">
+					<LinkControlSettingsDrawer
+						settingsOpen={ advancedOptionsOpen }
+						setSettingsOpen={ setAdvancedOptionsOpen }
+						title={ __( 'Advanced link options' ) }
+					>
+						<LinkPopoverSlot />
+					</LinkControlSettingsDrawer>
 				</div>
 			) }
 
