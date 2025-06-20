@@ -13,6 +13,7 @@ import {
 	TextControl,
 	__experimentalHStack as HStack,
 	__experimentalInputControlSuffixWrapper as InputControlSuffixWrapper,
+	__experimentalUseSlotFills as useSlotFills,
 } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import { useRef, useState, useEffect } from '@wordpress/element';
@@ -33,7 +34,11 @@ import LinkSettings from './settings';
 import useCreatePage from './use-create-page';
 import useInternalValue from './use-internal-value';
 import { ViewerFill } from './viewer-slot';
+import { EditorSlot, EditorFill } from './editor-slot';
+import LinkControlEditorContext from './editor-context';
 import { DEFAULT_LINK_SETTINGS } from './constants';
+import { useSettings } from '../use-settings';
+import { useBlockEditContext } from '../block-edit/context';
 import deprecated from '@wordpress/deprecated';
 
 /**
@@ -108,6 +113,8 @@ import deprecated from '@wordpress/deprecated';
  * @property {boolean=}                   hasTextControl             Whether to add a text field to the UI to update the value.title.
  * @property {string|Function|undefined}  createSuggestionButtonText The text to use in the button that calls createSuggestion.
  * @property {Function}                   renderControlBottom        Optional controls to be rendered at the bottom of the component.
+ * @property {Object=}                    attributes                 Block attributes object for extensibility context.
+ * @property {Function=}                  setAttributes              Block setAttributes function for extensibility context.
  */
 
 const noop = () => {};
@@ -142,6 +149,8 @@ function LinkControl( {
 	hasRichPreviews = false,
 	hasTextControl = false,
 	renderControlBottom = null,
+	attributes = {},
+	setAttributes = noop,
 } ) {
 	if ( withCreateSuggestion === undefined && createSuggestion ) {
 		withCreateSuggestion = true;
@@ -158,7 +167,12 @@ function LinkControl( {
 		};
 	}, [] );
 
+	const [ linkControlExtensibility ] = useSettings( 'linkControlExtensibility' );
+
 	const { set: setPreference } = useDispatch( preferencesStore );
+
+	// Get block edit context for extensibility features.
+	const blockEditContext = useBlockEditContext();
 
 	/**
 	 * Sets the open/closed state of the Advanced Settings Drawer,
@@ -355,6 +369,23 @@ function LinkControl( {
 	const isDisabled = ! valueHasChanges || currentInputIsEmpty;
 	const showSettings = !! settings?.length && isEditingLink && hasLinkValue;
 
+	// Check for extensibility slot fills when feature is enabled.
+	const editorSlotName = 'BlockEditorLinkControlEditor';
+	const editorFills = useSlotFills( linkControlExtensibility ? editorSlotName : null );
+	const hasEditorFills = Boolean( editorFills && editorFills.length );
+	const showExtensibilitySlot = hasEditorFills && isEditingLink && hasLinkValue;
+
+	// Context for extensibility slot.
+	// Use block edit context when available, fall back to props.
+	const contextAttributes = blockEditContext?.attributes || attributes;
+	const contextSetAttributes = blockEditContext?.setAttributes || setAttributes;
+
+	const editorSlotContext = {
+		value: internalControlValue,
+		attributes: contextAttributes,
+		setAttributes: contextSetAttributes,
+	};
+
 	return (
 		<div
 			tabIndex={ -1 }
@@ -450,20 +481,27 @@ function LinkControl( {
 				/>
 			) }
 
-			{ showSettings && (
+			{ (showSettings || showExtensibilitySlot) && (
 				<div className="block-editor-link-control__tools">
 					{ ! currentInputIsEmpty && (
 						<LinkControlSettingsDrawer
 							settingsOpen={ isSettingsOpen }
 							setSettingsOpen={ setSettingsOpenWithPreference }
 						>
-							<LinkSettings
-								value={ internalControlValue }
-								settings={ settings }
-								onChange={ createSetInternalSettingValueHandler(
-									settingsKeys
-								) }
-							/>
+							{ showSettings && (
+								<LinkSettings
+									value={ internalControlValue }
+									settings={ settings }
+									onChange={ createSetInternalSettingValueHandler(
+										settingsKeys
+									) }
+								/>
+							) }
+							{ showExtensibilitySlot && (
+								<LinkControlEditorContext.Provider value={ editorSlotContext }>
+									<EditorSlot />
+								</LinkControlEditorContext.Provider>
+							) }
 						</LinkControlSettingsDrawer>
 					) }
 				</div>
@@ -499,6 +537,7 @@ function LinkControl( {
 }
 
 LinkControl.ViewerFill = ViewerFill;
+LinkControl.EditorFill = EditorFill;
 LinkControl.DEFAULT_LINK_SETTINGS = DEFAULT_LINK_SETTINGS;
 
 const DeprecatedExperimentalLinkControl = ( props ) => {
@@ -511,6 +550,7 @@ const DeprecatedExperimentalLinkControl = ( props ) => {
 };
 
 DeprecatedExperimentalLinkControl.ViewerFill = LinkControl.ViewerFill;
+DeprecatedExperimentalLinkControl.EditorFill = LinkControl.EditorFill;
 DeprecatedExperimentalLinkControl.DEFAULT_LINK_SETTINGS =
 	LinkControl.DEFAULT_LINK_SETTINGS;
 

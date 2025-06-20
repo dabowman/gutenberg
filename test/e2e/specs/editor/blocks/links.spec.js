@@ -497,6 +497,224 @@ test.describe( 'Links', () => {
 		] );
 	} );
 
+	test.describe( 'Link Control Extensibility', () => {
+		test.beforeEach( async ( { requestUtils } ) => {
+			// Activate the test plugin for each test
+			await requestUtils.activatePlugin( 'link-control-extensibility' );
+		} );
+
+		test.afterEach( async ( { requestUtils } ) => {
+			// Deactivate the test plugin after each test
+			await requestUtils.deactivatePlugin( 'link-control-extensibility' );
+		} );
+
+		test( `settings drawer appears only when editing links`, async ( {
+			page,
+			editor,
+			pageUtils,
+			LinkUtils,
+		} ) => {
+			// Create a paragraph with a link
+			await LinkUtils.createLink();
+
+			const linkPopover = LinkUtils.getLinkPopover();
+
+			// Initially, should show preview mode (no advanced button visible)
+			await expect( linkPopover.getByRole( 'button', { name: 'Advanced' } ) ).toBeHidden();
+
+			// Click edit to enter edit mode
+			await linkPopover.getByRole( 'button', { name: 'Edit' } ).click();
+
+			// Now the Advanced button should be visible when editing
+			await expect( linkPopover.getByRole( 'button', { name: 'Advanced' } ) ).toBeVisible();
+		} );
+
+		test( `extensibility toggle modifies block attributes correctly`, async ( {
+			page,
+			editor,
+			pageUtils,
+			LinkUtils,
+		} ) => {
+			// Create a paragraph with a link
+			await LinkUtils.createLink();
+
+			const linkPopover = LinkUtils.getLinkPopover();
+
+			// Enter edit mode
+			await linkPopover.getByRole( 'button', { name: 'Edit' } ).click();
+
+			// Open the advanced settings drawer
+			await linkPopover.getByRole( 'button', { name: 'Advanced' } ).click();
+
+			// Find and interact with the nofollow toggle
+			const nofollowToggle = linkPopover.getByTestId( 'nofollow-toggle' );
+			await expect( nofollowToggle ).toBeVisible();
+
+			// Toggle should be unchecked initially
+			await expect( nofollowToggle ).not.toBeChecked();
+
+			// Click the toggle to enable nofollow
+			await nofollowToggle.click();
+			await expect( nofollowToggle ).toBeChecked();
+
+			// Submit the link
+			await linkPopover.getByRole( 'button', { name: 'Save' } ).click();
+
+			// Check that the block now has rel="nofollow" attribute
+			await expect.poll( editor.getBlocks ).toMatchObject( [
+				{
+					name: 'core/paragraph',
+					attributes: {
+						content: 'This is <a href="https://wordpress.org/gutenberg" rel="nofollow">Gutenberg</a>',
+					},
+				},
+			] );
+		} );
+
+		test( `changes persist after save and reload`, async ( {
+			page,
+			editor,
+			pageUtils,
+			LinkUtils,
+			admin,
+		} ) => {
+			// Create a paragraph with a link and enable nofollow
+			await LinkUtils.createLink();
+
+			const linkPopover = LinkUtils.getLinkPopover();
+
+			// Enter edit mode and open advanced settings
+			await linkPopover.getByRole( 'button', { name: 'Edit' } ).click();
+			await linkPopover.getByRole( 'button', { name: 'Advanced' } ).click();
+
+			// Enable nofollow
+			const nofollowToggle = linkPopover.getByTestId( 'nofollow-toggle' );
+			await nofollowToggle.click();
+			await linkPopover.getByRole( 'button', { name: 'Save' } ).click();
+
+			// Save the post
+			await page.getByRole( 'button', { name: 'Save draft' } ).click();
+			await expect( page.getByText( 'Draft saved' ) ).toBeVisible();
+
+			// Reload the page
+			await page.reload();
+			await page.waitForLoadState( 'networkidle' );
+
+			// Check that the nofollow attribute persists
+			await expect.poll( editor.getBlocks ).toMatchObject( [
+				{
+					name: 'core/paragraph',
+					attributes: {
+						content: 'This is <a href="https://wordpress.org/gutenberg" rel="nofollow">Gutenberg</a>',
+					},
+				},
+			] );
+
+			// Verify that when editing again, the toggle shows the correct state
+			await pageUtils.pressKeys( 'shiftAlt+ArrowLeft' ); // Select "Gutenberg"
+			await editor.clickBlockToolbarButton( 'Link' );
+
+			const newLinkPopover = LinkUtils.getLinkPopover();
+			await newLinkPopover.getByRole( 'button', { name: 'Edit' } ).click();
+			await newLinkPopover.getByRole( 'button', { name: 'Advanced' } ).click();
+
+			// The toggle should still be checked
+			const persistedToggle = newLinkPopover.getByTestId( 'nofollow-toggle' );
+			await expect( persistedToggle ).toBeChecked();
+		} );
+
+		test( `maintains keyboard accessibility`, async ( {
+			page,
+			editor,
+			pageUtils,
+			LinkUtils,
+		} ) => {
+			// Create a paragraph with a link
+			await LinkUtils.createLink();
+
+			const linkPopover = LinkUtils.getLinkPopover();
+
+			// Enter edit mode via keyboard
+			await pageUtils.pressKeys( 'Tab' ); // Tab to Edit button
+			await pageUtils.pressKeys( 'Enter' ); // Activate Edit button
+
+			// Navigate to Advanced button via keyboard
+			await pageUtils.pressKeys( 'Tab' ); // Tab to Submit button
+			await pageUtils.pressKeys( 'Tab' ); // Tab to Cancel button
+			await pageUtils.pressKeys( 'Tab' ); // Tab to Advanced button
+
+			// Open advanced settings via keyboard
+			await pageUtils.pressKeys( 'Enter' );
+
+			// Tab to the nofollow toggle and activate it via keyboard
+			await pageUtils.pressKeys( 'Tab' );
+			const nofollowToggle = linkPopover.getByTestId( 'nofollow-toggle' );
+			await expect( nofollowToggle ).toBeFocused();
+
+			// Toggle via keyboard
+			await pageUtils.pressKeys( 'Space' );
+			await expect( nofollowToggle ).toBeChecked();
+
+			// Navigate back and submit via keyboard
+			await pageUtils.pressKeys( 'shift+Tab' ); // Back to Advanced button
+			await pageUtils.pressKeys( 'shift+Tab' ); // Back to Cancel button
+			await pageUtils.pressKeys( 'shift+Tab' ); // Back to Save button
+			await pageUtils.pressKeys( 'Enter' ); // Submit
+
+			// Verify the changes were applied
+			await expect.poll( editor.getBlocks ).toMatchObject( [
+				{
+					name: 'core/paragraph',
+					attributes: {
+						content: 'This is <a href="https://wordpress.org/gutenberg" rel="nofollow">Gutenberg</a>',
+					},
+				},
+			] );
+		} );
+
+		test( `extensibility coexists with existing settings`, async ( {
+			page,
+			editor,
+			pageUtils,
+			LinkUtils,
+		} ) => {
+			// Create a paragraph with a link
+			await LinkUtils.createLink();
+
+			const linkPopover = LinkUtils.getLinkPopover();
+
+			// Enter edit mode and open advanced settings
+			await linkPopover.getByRole( 'button', { name: 'Edit' } ).click();
+			await linkPopover.getByRole( 'button', { name: 'Advanced' } ).click();
+
+			// Both existing "Open in new tab" setting and new SEO controls should be visible
+			const openInNewTabToggle = linkPopover.getByRole( 'checkbox', { name: 'Open in new tab' } );
+			const seoControls = linkPopover.getByTestId( 'seo-controls' );
+			const nofollowToggle = linkPopover.getByTestId( 'nofollow-toggle' );
+
+			await expect( openInNewTabToggle ).toBeVisible();
+			await expect( seoControls ).toBeVisible();
+			await expect( nofollowToggle ).toBeVisible();
+
+			// Enable both settings
+			await openInNewTabToggle.click();
+			await nofollowToggle.click();
+
+			// Submit the link
+			await linkPopover.getByRole( 'button', { name: 'Save' } ).click();
+
+			// Both attributes should be applied
+			await expect.poll( editor.getBlocks ).toMatchObject( [
+				{
+					name: 'core/paragraph',
+					attributes: {
+						content: 'This is <a href="https://wordpress.org/gutenberg" target="_blank" rel="noreferrer noopener nofollow">Gutenberg</a>',
+					},
+				},
+			] );
+		} );
+	} );
+
 	test( `adds an assertive message for screenreader users when an invalid link is set`, async ( {
 		page,
 		editor,

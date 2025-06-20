@@ -33,6 +33,7 @@ export const PREFERENCES_DEFAULTS = {
  * @property {boolean}       __experimentalBlockDirectory           Whether the user has enabled the Block Directory
  * @property {Array}         __experimentalBlockPatterns            Array of objects representing the block patterns
  * @property {Array}         __experimentalBlockPatternCategories   Array of objects representing the block pattern categories
+ * @property {boolean}       linkControlExtensibility               Whether link control extensibility features are enabled
  */
 export const SETTINGS_DEFAULTS = {
 	alignWide: false,
@@ -167,6 +168,9 @@ export const SETTINGS_DEFAULTS = {
 	__mobileEnablePageTemplates: false,
 	__experimentalBlockPatterns: [],
 	__experimentalBlockPatternCategories: [],
+
+	// Enable link control extensibility features.
+	linkControlExtensibility: false,
 
 	isPreviewMode: false,
 

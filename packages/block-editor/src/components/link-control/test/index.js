@@ -2582,3 +2582,261 @@ async function toggleSettingsDrawer( user ) {
 
 	await user.click( settingsToggle );
 }
+
+describe( 'Link Control Extensibility', () => {
+	/**
+	 * WordPress dependencies
+	 */
+	const { SlotFillProvider } = require( '@wordpress/components' );
+	const { createContext } = require( '@wordpress/element' );
+
+	/**
+	 * Internal dependencies
+	 */
+	const { EditorFill } = require( '../editor-slot' );
+	const { useLinkControlEditorContext } = require( '../editor-context' );
+
+	// Mock the BlockEditContext to simulate block environment.
+	const MockBlockEditContext = createContext( {
+		attributes: { className: 'test-class', rel: 'nofollow' },
+		setAttributes: jest.fn(),
+	} );
+
+	const TestFillComponent = () => {
+		const context = useLinkControlEditorContext();
+		return (
+			<div data-testid="test-fill">
+				<span data-testid="context-value">
+					{ JSON.stringify( context.value ) }
+				</span>
+				<span data-testid="context-attributes">
+					{ JSON.stringify( context.attributes ) }
+				</span>
+				<button
+					data-testid="modify-attributes"
+					onClick={ () =>
+						context.setAttributes( { testAttribute: 'modified' } )
+					}
+				>
+					Modify Attributes
+				</button>
+			</div>
+		);
+	};
+
+	const LinkControlWrapper = ( { children, enableExtensibility = false } ) => {
+		const blockEditContext = {
+			attributes: { className: 'test-class', rel: 'nofollow' },
+			setAttributes: jest.fn(),
+		};
+
+		// Mock useSettings hook to control the feature flag.
+		jest.doMock( '../use-settings', () => ( {
+			useSettings: () => [ enableExtensibility ],
+		} ) );
+
+		// Mock useBlockEditContext hook.
+		jest.doMock( '../block-edit/context', () => ( {
+			useBlockEditContext: () => blockEditContext,
+		} ) );
+
+		return (
+			<SlotFillProvider>
+				<MockBlockEditContext.Provider value={ blockEditContext }>
+					{ children }
+				</MockBlockEditContext.Provider>
+			</SlotFillProvider>
+		);
+	};
+
+	beforeEach( () => {
+		jest.clearAllMocks();
+	} );
+
+	afterEach( () => {
+		jest.restoreAllMocks();
+	} );
+
+	it( 'should not show extensibility slot when feature is disabled', () => {
+		render(
+			<LinkControlWrapper enableExtensibility={ false }>
+				<LinkControl
+					value={ { url: 'https://example.com' } }
+					forceIsEditingLink
+				/>
+				<EditorFill>
+					<TestFillComponent />
+				</EditorFill>
+			</LinkControlWrapper>
+		);
+
+		// Settings drawer toggle should not be visible when no fills and feature disabled.
+		expect( getSettingsDrawerToggle() ).not.toBeInTheDocument();
+
+		// Fill component should not be rendered.
+		expect( screen.queryByTestId( 'test-fill' ) ).not.toBeInTheDocument();
+	} );
+
+	it( 'should show settings drawer when extensibility fills are present and feature is enabled', async () => {
+		const user = userEvent.setup();
+
+		render(
+			<LinkControlWrapper enableExtensibility={ true }>
+				<LinkControl
+					value={ { url: 'https://example.com' } }
+					forceIsEditingLink
+				/>
+				<EditorFill>
+					<TestFillComponent />
+				</EditorFill>
+			</LinkControlWrapper>
+		);
+
+		// Settings drawer toggle should be visible when fills are present.
+		const settingsToggle = getSettingsDrawerToggle();
+		expect( settingsToggle ).toBeVisible();
+
+		// Open the settings drawer.
+		await user.click( settingsToggle );
+
+		// Fill component should be rendered within the drawer.
+		expect( screen.getByTestId( 'test-fill' ) ).toBeVisible();
+	} );
+
+	it( 'should provide correct context values to fills', async () => {
+		const user = userEvent.setup();
+		const testValue = { url: 'https://example.com', title: 'Test Link' };
+
+		render(
+			<LinkControlWrapper enableExtensibility={ true }>
+				<LinkControl value={ testValue } forceIsEditingLink />
+				<EditorFill>
+					<TestFillComponent />
+				</EditorFill>
+			</LinkControlWrapper>
+		);
+
+		await toggleSettingsDrawer( user );
+
+		// Context should contain the link value.
+		expect( screen.getByTestId( 'context-value' ) ).toHaveTextContent(
+			JSON.stringify( testValue )
+		);
+
+		// Context should contain block attributes.
+		expect( screen.getByTestId( 'context-attributes' ) ).toHaveTextContent(
+			JSON.stringify( { className: 'test-class', rel: 'nofollow' } )
+		);
+	} );
+
+	it( 'should allow fills to modify block attributes via context', async () => {
+		const user = userEvent.setup();
+		const mockSetAttributes = jest.fn();
+
+		// Create a custom wrapper with controlled setAttributes.
+		const ControlledLinkControlWrapper = ( { children } ) => {
+			const blockEditContext = {
+				attributes: { className: 'test-class', rel: 'nofollow' },
+				setAttributes: mockSetAttributes,
+			};
+
+			jest.doMock( '../use-settings', () => ( {
+				useSettings: () => [ true ],
+			} ) );
+
+			jest.doMock( '../block-edit/context', () => ( {
+				useBlockEditContext: () => blockEditContext,
+			} ) );
+
+			return (
+				<SlotFillProvider>
+					<MockBlockEditContext.Provider value={ blockEditContext }>
+						{ children }
+					</MockBlockEditContext.Provider>
+				</SlotFillProvider>
+			);
+		};
+
+		render(
+			<ControlledLinkControlWrapper>
+				<LinkControl
+					value={ { url: 'https://example.com' } }
+					forceIsEditingLink
+				/>
+				<EditorFill>
+					<TestFillComponent />
+				</EditorFill>
+			</ControlledLinkControlWrapper>
+		);
+
+		await toggleSettingsDrawer( user );
+
+		// Click the button that modifies attributes.
+		const modifyButton = screen.getByTestId( 'modify-attributes' );
+		await user.click( modifyButton );
+
+		// setAttributes should have been called with the new value.
+		expect( mockSetAttributes ).toHaveBeenCalledWith( {
+			testAttribute: 'modified',
+		} );
+	} );
+
+	it( 'should maintain backwards compatibility with existing settings', async () => {
+		const user = userEvent.setup();
+		const settings = [
+			{
+				id: 'opensInNewTab',
+				title: 'Open in new tab',
+			},
+		];
+
+		render(
+			<LinkControlWrapper enableExtensibility={ true }>
+				<LinkControl
+					value={ { url: 'https://example.com' } }
+					settings={ settings }
+					forceIsEditingLink
+				/>
+				<EditorFill>
+					<TestFillComponent />
+				</EditorFill>
+			</LinkControlWrapper>
+		);
+
+		await toggleSettingsDrawer( user );
+
+		// Both existing settings and new fills should be visible.
+		expect(
+			screen.getByRole( 'checkbox', { name: 'Open in new tab' } )
+		).toBeVisible();
+		expect( screen.getByTestId( 'test-fill' ) ).toBeVisible();
+	} );
+
+	it( 'should gracefully handle missing block edit context', () => {
+		// Mock missing block edit context.
+		jest.doMock( '../block-edit/context', () => ( {
+			useBlockEditContext: () => null,
+		} ) );
+
+		jest.doMock( '../use-settings', () => ( {
+			useSettings: () => [ true ],
+		} ) );
+
+		const { container } = render(
+			<SlotFillProvider>
+				<LinkControl
+					value={ { url: 'https://example.com' } }
+					forceIsEditingLink
+					attributes={ { testProp: 'fallback' } }
+					setAttributes={ jest.fn() }
+				/>
+				<EditorFill>
+					<TestFillComponent />
+				</EditorFill>
+			</SlotFillProvider>
+		);
+
+		// Should not crash and should render normally.
+		expect( container ).toBeTruthy();
+	} );
+} );
