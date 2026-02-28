@@ -524,3 +524,181 @@ The polling latency (250ms with collaborators) is acceptable for an agent
 workflow. The human would see the agent's changes appear in near-real-time, and
 the agent would see the human's changes with the same delay — comparable to the
 experience of two humans collaborating today.
+
+---
+
+## 8. Plugin vs. Core: Implementation Options
+
+This section evaluates whether an agent CRDT peer can be implemented as a
+standalone WordPress plugin, or whether it would require changes to Gutenberg
+core or WordPress core.
+
+### 8.1 What the Plugin Gets for Free
+
+The existing collaboration infrastructure provides several key extension points
+that a plugin can leverage without any core changes:
+
+**Yjs library access (`wp.sync.Y`).**
+The `@wordpress/sync` package has `"wpScript": true` in its `package.json`,
+meaning it is registered as a WordPress script and exposed as `wp.sync` on the
+global scope. A plugin can declare `wp-sync` as a script dependency and access
+`wp.sync.Y` (the full Yjs library) and `wp.sync.Awareness` directly. This is
+explicitly documented in `packages/sync/README.md` and `packages/sync/src/index.ts`
+as the required way for external code to consume Yjs — sharing a single Yjs
+instance avoids a known singleton conflict (yjs/yjs#438).
+
+**The `sync.providers` filter hook.**
+This is the most important finding. In `packages/sync/src/providers/index.ts`
+(line 52), the list of provider creators is passed through a WordPress
+`applyFilters('sync.providers', ...)` hook before being used:
+
+```javascript
+const filteredProviderCreators = applyFilters(
+    'sync.providers',
+    getDefaultProviderCreators()
+);
+```
+
+This means **a plugin can add, replace, or augment sync providers** by hooking
+into `sync.providers`. A plugin could add a custom provider that bridges to an
+agent's Yjs client, or replace the default HTTP polling provider entirely.
+
+**REST API endpoint (`wp-sync/v1/updates`).**
+The sync server registers a REST endpoint at `POST /wp-sync/v1/updates`. This
+endpoint uses standard WordPress REST API permission callbacks (`edit_post`
+capability). Any authenticated client — including a headless Node.js agent using
+application passwords — can POST to this endpoint. No special plugin registration
+is required to participate in a sync room.
+
+**Collaboration admin setting.**
+The `wp_enable_real_time_collaboration` option is a standard WordPress setting
+registered via `register_setting()`. A plugin can programmatically enable it with
+`update_option('wp_enable_real_time_collaboration', true)`, or it can be toggled
+by an admin in Settings > Writing. The setting gates everything: it sets
+`window._wpCollaborationEnabled = true` (which enables the JS-side CRDT system)
+and enables the sync REST routes.
+
+**Awareness protocol.**
+`Awareness` from `y-protocols/awareness` is exported publicly from
+`@wordpress/sync`. A plugin or agent can create and manage awareness instances
+for presence tracking.
+
+### 8.2 Two Plugin Architectures
+
+#### Architecture A: Headless Agent (Node.js sidecar — no core changes)
+
+The agent runs as a **standalone Node.js process** outside WordPress, connecting
+to the sync server via HTTP:
+
+```
+┌─────────────────────────┐     ┌──────────────────────┐
+│  Human (Block Editor)   │     │  Agent (Node.js)     │
+│                         │     │                       │
+│  Y.Doc ←→ HTTP Polling  │     │  Y.Doc ←→ HTTP POST  │
+│       Provider          │     │    to wp-sync/v1      │
+└────────────┬────────────┘     └──────────┬───────────┘
+             │                             │
+             ▼                             ▼
+      ┌──────────────────────────────────────────┐
+      │  WordPress (wp-sync/v1/updates endpoint) │
+      │  WP_HTTP_Polling_Sync_Server             │
+      │  WP_Sync_Post_Meta_Storage               │
+      └──────────────────────────────────────────┘
+```
+
+**What this needs:**
+- A Node.js application using the `yjs` npm package
+- HTTP client that authenticates via application passwords (HTTP Basic Auth)
+- Implementation of the polling protocol (POST to `wp-sync/v1/updates` with
+  room, client_id, after cursor, updates, awareness)
+- Knowledge of the block tree data structure for constructing Y.Doc operations
+
+**What this does NOT need:**
+- Any WordPress plugin code
+- Any Gutenberg core changes
+- The block editor running (the agent is a pure protocol peer)
+
+**Trade-off:** The agent must bundle its own Yjs instance. Since it runs in a
+separate process, the Yjs singleton constraint doesn't apply — there's no shared
+JS runtime with the editor.
+
+#### Architecture B: WordPress Plugin (in-browser bridge — no core changes)
+
+A WordPress plugin that acts as a bridge between an external agent and the
+collaboration system, running inside the block editor's browser context:
+
+```
+┌─────────────────────────────────────────────────┐
+│  Block Editor (browser)                          │
+│                                                   │
+│  ┌──────────────┐   ┌──────────────────────────┐ │
+│  │ Human Editor  │   │ Agent Bridge Plugin      │ │
+│  │ (core-data)   │   │ - Receives instructions  │ │
+│  │               │   │   from external agent     │ │
+│  │  Y.Doc ←────────→ │ - Applies Y.Doc ops      │ │
+│  │               │   │ - Uses wp.sync.Y          │ │
+│  └──────────────┘   └──────────────────────────┘ │
+│           ↕                      ↕                │
+│     HTTP Polling Provider (shared)                │
+└───────────────────────┬──────────────────────────┘
+                        ▼
+              WordPress sync server
+```
+
+**What this needs:**
+- A WordPress plugin that enqueues a JS script with `wp-sync` as a dependency
+- The script hooks into `sync.providers` to access the shared Y.Doc
+- An external communication channel (WebSocket, long-poll, or REST endpoint
+  provided by the plugin) for the agent to send instructions
+- The plugin translates agent instructions into Y.Doc operations
+
+**Advantage:** Shares the same Yjs instance and Y.Doc as the human editor — no
+separate polling needed, edits are instant.
+
+**Trade-off:** Requires the block editor to be open in a browser tab. The agent
+can't edit without a human having the editor open.
+
+### 8.3 What Requires Core Changes (and What Doesn't)
+
+| Requirement | Plugin possible? | Notes |
+|------------|-----------------|-------|
+| Participate in sync protocol via HTTP | Yes | `wp-sync/v1/updates` is a standard REST endpoint |
+| Access Yjs library | Yes | Exported as `wp.sync.Y` |
+| Add/replace sync providers | Yes | `sync.providers` filter hook |
+| Enable collaboration setting | Yes | `update_option()` call |
+| Authenticate headless agent | Yes | Application passwords (since WP 5.6) |
+| Access Gutenberg's sync manager instance | No (private API) | Locked behind `__dangerousOptInToUnstableAPIsOnlyForCoreModules` |
+| Modify how blocks map to CRDT types | No (private API) | `crdt.ts`, `crdt-blocks.ts` are internal |
+| Add agent presence to collaborators UI | Partially | Awareness protocol is public, but presence UI is hardcoded |
+| Server-side CRDT gateway (Option B from section 4) | No | Would require PHP Yjs implementation in core |
+
+### 8.4 The WordPress 7.0 Question
+
+All the collaboration code lives in `lib/compat/wordpress-7.0/`, indicating it
+targets **WordPress 7.0** for core merge. Today it only exists in the Gutenberg
+plugin. This means:
+
+- **Today**: The agent plugin requires the **Gutenberg plugin** to be active
+  (for the sync server, CRDT post meta, and `@wordpress/sync` script).
+- **After WordPress 7.0**: The sync infrastructure will be in WordPress core,
+  and the agent plugin will work with a vanilla WordPress installation.
+
+Either way, no changes to Gutenberg or WordPress core are needed for the agent
+plugin itself.
+
+### 8.5 Conclusion
+
+**A standalone plugin is entirely viable.** The cleanest architecture is a
+**headless Node.js agent** (Architecture A) that participates in the sync
+protocol via HTTP. It requires:
+
+1. Zero changes to Gutenberg core or WordPress core
+2. The Gutenberg plugin active (or WordPress 7.0+) with collaboration enabled
+3. A WordPress user account with `edit_post` capability and an application
+   password
+4. A Node.js process running the `yjs` npm package with HTTP polling to
+   `wp-sync/v1/updates`
+
+The existing `sync.providers` filter hook and the open REST endpoint make this a
+first-class extension pattern — it's exactly how the system was designed to be
+extended.
