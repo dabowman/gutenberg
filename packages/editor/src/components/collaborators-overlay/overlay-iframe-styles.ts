@@ -55,6 +55,27 @@ export const OVERLAY_IFRAME_STYLES = `
 	pointer-events: none;
 	border-radius: 2px;
 }
+.collaborators-overlay-selection-bracket {
+	position: absolute;
+	z-index: 0;
+	width: ${ GRID_UNIT_05 };
+	pointer-events: none;
+	outline: ${ BORDER_WIDTH } solid ${ WHITE };
+	box-shadow: ${ ELEVATION_X_SMALL };
+}
+.collaborators-overlay-selection-bracket--left {
+	border-width: ${ BORDER_WIDTH_FOCUS_FALLBACK };
+	border-style: solid;
+	border-right: none;
+	border-radius: 2px 0 0 2px;
+	transform: translateX(-100%);
+}
+.collaborators-overlay-selection-bracket--right {
+	border-width: ${ BORDER_WIDTH_FOCUS_FALLBACK };
+	border-style: solid;
+	border-left: none;
+	border-radius: 0 2px 2px 0;
+}
 
 /* Overlay-specific positioning applied to the Avatar cursor label. */
 .collaborators-overlay-user-label.editor-avatar {

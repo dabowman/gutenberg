@@ -26,6 +26,7 @@ export interface CursorData {
 	y: number;
 	height: number;
 	selectionRects?: SelectionRect[];
+	anchorSide?: 'left' | 'right';
 }
 
 /**
@@ -143,6 +144,7 @@ export function useRenderCursors(
 
 				if ( selectionVisual.selectionRects ) {
 					cursorData.selectionRects = selectionVisual.selectionRects;
+					cursorData.anchorSide = selectionVisual.anchorSide;
 				}
 
 				results.push( cursorData );

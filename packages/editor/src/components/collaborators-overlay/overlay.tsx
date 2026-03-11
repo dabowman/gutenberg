@@ -6,6 +6,7 @@ import { AVATAR_IFRAME_STYLES } from './avatar-iframe-styles';
 import { OVERLAY_IFRAME_STYLES } from './overlay-iframe-styles';
 import { useBlockHighlighting } from './use-block-highlighting';
 import { useRenderCursors } from './use-render-cursors';
+import type { SelectionRect } from './use-render-cursors';
 
 const RERENDER_DELAY_MS = 500;
 
@@ -13,6 +14,31 @@ interface OverlayProps {
 	blockEditorDocument?: Document;
 	postId: number | null;
 	postType: string | null;
+}
+
+/**
+ * Compute the bracket position from selection rects and anchor side.
+ * The bracket is flush with the edge of the selection highlight
+ * and vertically centered on the line at that edge.
+ * @param rects
+ * @param anchorSide
+ * @param color
+ */
+function getBracketStyle(
+	rects: SelectionRect[],
+	anchorSide: 'left' | 'right',
+	color: string
+) {
+	const isLeft = anchorSide === 'left';
+	const rect = isLeft ? rects[ 0 ] : rects[ rects.length - 1 ];
+	const bracketX = isLeft ? rect.x : rect.x + rect.width;
+
+	return {
+		left: `${ bracketX }px`,
+		top: `${ rect.y }px`,
+		height: `${ rect.height }px`,
+		borderColor: color,
+	};
 }
 
 /**
@@ -93,6 +119,16 @@ export function Overlay( {
 							} }
 						/>
 					) ) }
+					{ cursor.selectionRects?.length && cursor.anchorSide && (
+						<div
+							className={ `collaborators-overlay-selection-bracket collaborators-overlay-selection-bracket--${ cursor.anchorSide }` }
+							style={ getBracketStyle(
+								cursor.selectionRects,
+								cursor.anchorSide,
+								cursor.color
+							) }
+						/>
+					) }
 					<div
 						className="collaborators-overlay-user"
 						style={ {

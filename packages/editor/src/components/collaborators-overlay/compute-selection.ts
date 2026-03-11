@@ -34,6 +34,7 @@ interface MultiBlockResult {
 export interface SelectionVisual {
 	coords?: CursorCoords | null;
 	selectionRects?: SelectionRect[];
+	anchorSide?: 'left' | 'right';
 }
 
 /**
@@ -153,6 +154,7 @@ function computeTextSelection(
 				overlayContext.overlayRect
 			),
 			selectionRects: allRects,
+			anchorSide: isReverse ? 'right' : 'left',
 		};
 	}
 
